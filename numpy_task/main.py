@@ -53,7 +53,7 @@ mc = np.std(m)
 assert mc == 0.5
 
 n = np.array([1, 2, 3, 4, 5, 6])
-nc = np.med(n)
+nc = np.median(n)
 
 assert nc == 3.5
 
