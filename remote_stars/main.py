@@ -26,7 +26,7 @@ def solve(image) -> float:
     center2 = np.unravel_index(np.argmax(image * (labeled == 2)), image.shape)
     return np.linalg.norm(np.array(center1) - np.array(center2))
 
-def main() -> None:
+if __name__ == "__main__":
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.connect((host, port))
         sock.send(b"124ras1")
@@ -34,7 +34,7 @@ def main() -> None:
 
         beat = b"nope"
         count = 0
-        while beat != b"yep":
+        while beat != b"yep" and count != 10:
             sock.send(b"get")
             bts = recvall(sock, 40002)
             print("image received" if bts else "oops...")
@@ -45,7 +45,3 @@ def main() -> None:
             sock.send(b"beat")
             beat = sock.recv(10)
             count += 1
-        print(count)
-
-if __name__ == "__main__":
-    main()
