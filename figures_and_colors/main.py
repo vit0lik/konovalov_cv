@@ -4,11 +4,11 @@ from skimage.measure import label, regionprops
 from skimage.io import imread
 from skimage.color import rgb2hsv
 
-def get_key(value, keys, delta) -> float:
-    for key in keys:
-        if abs(key - value) < delta:
-            return key
-    return value
+def get_shade(color: float, existing_shades: list[float], delta: float) -> float:
+    for shade in existing_shades:
+        if abs(shade - color) < delta:
+            return shade
+    return color
         
 if __name__ == "__main__":
     
