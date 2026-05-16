@@ -2,6 +2,7 @@ import pyautogui
 import mss
 import time
 import numpy as np
+from collections import deque
 
 time.sleep(3)
 
@@ -9,73 +10,94 @@ frame = 0
 start_time = time.time()
 c = 10
 last_pos = None
-skip_frames = 0
-obstacles = []
 pixels_per_frame = 0
-speed = np.array([])
+speed_buffer = deque(maxlen=10)
+dino_pos = None
 
-def calibrate():
-    global DINO_POS
+base_width = 80
+
+scan_left = 150
+scan_right = 400
+scan_height = 40
+
+jump_coefficient = 2
+
+def calibrate(dino_pos) -> map:
     print("Open https://chromedino.com/")
     print("Move cursor to DINO EYE and press Enter")
     input()
-    DINO_POS = pyautogui.position()
-    print(f"Dino position: {DINO_POS}")
-    
-def find_obstacle_width(zone):
-    img = np.array(sct.grab(scan_zone))
-    gray = img[:, :, :3].mean(axis=2)
-    left_col = np.where(gray < 128)[1].min()
-    right_col = np.where(gray < 128)[1].max()
-    obstacle_width = right_col - left_col + 1
-    return obstacle_width
-calibrate()
+    dino_pos = pyautogui.position()
+    print(f"Dino position: {dino_pos}")
+    return dino_pos
+
+x, y = calibrate(dino_pos)
 
 with mss.mss() as sct:
     while True:
         frame += 1
-        x, y = DINO_POS
-            
-        scan_zone = {"top": y - c, "left": x + 350, "width": 80, "height": 6 * c}
-        img = np.array(sct.grab(scan_zone))
-        gray = img[:, :, :3].mean(axis=2)
-        if skip_frames > 0:
-            skip_frames -= 1
-            
-        if (gray < 128).any():
-            left_col = np.where(gray < 128)[1].min()
-            if last_pos and ( last_pos - left_col) > 0:
-                speed = np.append(speed, last_pos - left_col)
-                pixels_per_frame = int(speed.mean())
-                if len(speed) > 10:
-                    speed = np.delete(speed, 0)
-            last_pos = left_col
+
+        combined_top = y - c
+        combined_height = (y + scan_height) - combined_top
         
-        scan_zone = {"top": y - c, "left": x + 300, "width": 30, "height": 6 * c}
-        img = np.array(sct.grab(scan_zone))
+        combined_zone = {
+            "top": combined_top,
+            "left": x + scan_left,
+            "width": scan_right - scan_left,
+            "height": combined_height
+        }
+        
+        img = np.array(sct.grab(combined_zone))
         gray = img[:, :, :3].mean(axis=2)
-        if (gray < 128).any() and skip_frames == 0 and pixels_per_frame:
-            obstacle_zone = {"top": y - c, "left": x + 300, "width": 160, "height": 6 * c}
+
+        upper_gray = gray[:scan_height // 2 + 15, :]
+        upper_dark_cols = np.where(upper_gray < 128)[1]
+
+        lower_gray = gray[scan_height // 2 + 16:, :]
+        lower_dark_cols = np.where(lower_gray < 128)[1]
+
+        if len(lower_dark_cols) > 0:
+    
+            lower_left = lower_dark_cols.min()
+            lower_right = lower_dark_cols.max()
+            lower_width = lower_right - lower_left + 1
+
+            if last_pos is not None:
+                delta = last_pos - lower_left
+                if delta > 0:
+                    speed_buffer.append(delta)
+                    pixels_per_frame = max(1, int(np.mean(speed_buffer)))
+
+            last_pos = lower_left
+
             if pixels_per_frame > 0:
-                img1 = np.array(sct.grab(obstacle_zone))
-                gray = img1[:, :, :3].mean(axis=2)
-                cols = np.where(gray < 128)[1]
-                if len(cols) > 0:
-                    obstacle_width = cols.max() - cols.min() + 1
-                    obstacles.append(obstacle_width)
-                    print(frame, obstacle_width, pixels_per_frame)
-                    skip_frames = obstacle_width // pixels_per_frame
-                
-        if obstacles and pixels_per_frame is not None:        
-            monitor = {"top": y-c, "left": x + 200 + pixels_per_frame - obstacles[0], "width": 2*c, "height": 4*c}
-            img = np.array(sct.grab(monitor))
+                jump_distance = base_width - lower_width + pixels_per_frame * jump_coefficient
+                if lower_left <= jump_distance:
+                    pyautogui.hotkey("up")
+                    time.sleep(lower_width / pixels_per_frame * 0.035)
+                    pyautogui.hotkey("down")
+                    
+        elif len(upper_dark_cols) > 0:
             
-            if (img[:, :, :3].mean(axis=2) < 128).any():
-                pyautogui.hotkey("up")
-                obstacles.pop(0)
-        
-        if frame % 500 == 0:
+            upper_left = upper_dark_cols.min()
+            upper_right = upper_dark_cols.max()
+            upper_width = upper_right - upper_left + 1
+
+            if last_pos is not None:
+                delta = last_pos - upper_left
+                if delta > 0:
+                    speed_buffer.append(delta)
+                    pixels_per_frame = max(1, int(np.mean(speed_buffer)))
+
+            last_pos = upper_left
+
+            if pixels_per_frame > 0:
+                duck_distance = base_width - upper_width + pixels_per_frame * 2
+                if upper_left <= duck_distance:
+                    pyautogui.keyDown("down")
+                    time.sleep(upper_width / pixels_per_frame * 0.06)
+                    pyautogui.keyUp("down")
+
+        if frame % 100 == 0:
             elapsed = time.time() - start_time
             fps = frame / elapsed
-            
-            print(f"Frame {frame}, FPS: {fps:.1f}")
+            print(f"Frame {frame}, FPS: {fps:.1f}, speed={pixels_per_frame}")
